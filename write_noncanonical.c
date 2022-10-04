@@ -25,7 +25,15 @@
 #define FLAG 01111110
 #define A    00000011
 #define C    00000011
+#define C_UA   00000111
 #define BCC  (A^C)
+
+#define START 0
+#define FLAG_RCV 1
+#define A_RCV 2
+#define C_RCV 3
+#define BCC_OK 4
+#define S_STOP 5
 
 volatile int STOP = FALSE;
 
@@ -74,7 +82,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -109,6 +117,56 @@ int main(int argc, char *argv[])
 
     // Wait until all bytes have been written to the serial port
     sleep(1);
+    
+    unsigned char byte;
+    
+    int state = START;
+    
+    while (STOP == FALSE)
+    {
+        bytes = read(fd, byte, 1);
+        if(bytes){
+            switch(state)
+            {
+                case START:
+                    if(byte == FLAG)
+                        state = FLAG_RCV;
+                    break;
+                case FLAG_RCV:
+                    if (byte == A)
+                        state = A_RCV;
+                    else if(byte != FLAG)           
+                        state = START;
+                    break;
+                case A_RCV:
+                    if (byte == C_UA)
+                        state = C_RCV;
+                    else if (byte == FLAG)
+                        state = FLAG_RCV;
+                    else
+                        state = START;
+                    break;
+                case C_RCV:
+                    if (byte == BCC)
+                        state = BCC_OK;
+                    else if (byte == FLAG_RCV)
+                        state = FLAG_RCV;
+                    else
+                        state = START;
+                    break;
+                case BCC_OK:
+                    if (byte == FLAG_RCV)
+                        state = STOP;
+                    else
+                        state = START;
+                    break;
+                case S_STOP:
+                    state = START;
+                    STOP = TRUE;
+            }
+        }
+    }
+   
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)

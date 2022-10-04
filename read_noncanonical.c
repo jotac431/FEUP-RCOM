@@ -25,7 +25,7 @@
 #define FLAG 01111110
 #define A    00000011
 #define C    00000011
-#define UA   00000111
+#define C_UA   00000111
 #define BCC  (A^C)
 
 #define START 0
@@ -33,7 +33,7 @@
 #define A_RCV 2
 #define C_RCV 3
 #define BCC_OK 4
-#define STOP 5
+#define S_STOP 5
 
 volatile int STOP = FALSE;
 
@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Loop for input
-    unsigned char byte
+    unsigned char byte;
     
     int state = START;
     
@@ -136,18 +136,18 @@ int main(int argc, char *argv[])
                 case C_RCV:
                     if (byte == BCC)
                         state = BCC_OK;
-                    else if (byte == FLAG_RCV)
+                    else if (byte == FLAG)
                         state = FLAG_RCV;
                     else
                         state = START;
                     break;
                 case BCC_OK:
-                    if (byte == FLAG_RCV)
+                    if (byte == FLAG)
                         state = STOP;
                     else
                         state = START;
                     break;
-                case STOP:
+                case S_STOP:
                     state = START;
                     STOP = true;
             }
@@ -157,7 +157,7 @@ int main(int argc, char *argv[])
     sleep(1);
     
     // Returns after 5 chars have been input
-    unsigned char buf[5] = {FLAG, A, UA, BCC, FLAG};
+    unsigned char buf[5] = {FLAG, A, C_UA, BCC, FLAG};
     bytes = write(fd, buf, sizeof(buf) / sizeof(char));
     
 
