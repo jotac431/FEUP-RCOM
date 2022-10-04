@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Create string to send
-    unsigned char buf[] = {FLAG, A, C, BCC, FLAG};
+    unsigned char buf[5] = {FLAG, A, C, BCC, FLAG};
 
     //fgets(buf);
     

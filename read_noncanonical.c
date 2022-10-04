@@ -25,6 +25,7 @@
 #define FLAG 01111110
 #define A    00000011
 #define C    00000011
+#define UA   00000111
 #define BCC  (A^C)
 
 #define START 0
@@ -32,6 +33,7 @@
 #define A_RCV 2
 #define C_RCV 3
 #define BCC_OK 4
+#define STOP 5
 
 volatile int STOP = FALSE;
 
@@ -101,30 +103,63 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Loop for input
-    unsigned char buf[1]; // +1: Save space for the final '\0' char
-    
-    // Returns after 5 chars have been input
-    int bytes = 0;
-    buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
+    unsigned char byte
     
     int state = START;
+    
+    int bytes = 0;
 
     while (STOP == FALSE)
     {
-        
-        switch(state)
-        {
-            case START:
-                bytes = read(fd, buf, 1);
-                if(buf == FLAG){
-                    state = FLAG_RCV;
-                    }
+        bytes = read(fd, byte, 1);
+        if(bytes){
+            switch(state)
+            {
+                case START:
+                    if(byte == FLAG)
+                        state = FLAG_RCV;
+                    break;
+                case FLAG_RCV:
+                    if (byte == A)
+                        state = A_RCV;
+                    else if(byte != FLAG)           
+                        state = START;
+                    break;
+                case A_RCV:
+                    if (byte == C)
+                        state = C_RCV;
+                    else if (byte == FLAG)
+                        state = FLAG_RCV;
+                    else
+                        state = START;
+                    break;
+                case C_RCV:
+                    if (byte == BCC)
+                        state = BCC_OK;
+                    else if (byte == FLAG_RCV)
+                        state = FLAG_RCV;
+                    else
+                        state = START;
+                    break;
+                case BCC_OK:
+                    if (byte == FLAG_RCV)
+                        state = STOP;
+                    else
+                        state = START;
+                    break;
+                case STOP:
+                    state = START;
+                    STOP = true;
+            }
         }
-
-        printf(":%s:%d\n", buf, bytes);
-        if (buf[0] == 'z')
-            STOP = TRUE;
     }
+    
+    sleep(1);
+    
+    // Returns after 5 chars have been input
+    unsigned char buf[5] = {FLAG, A, UA, BCC, FLAG};
+    bytes = write(fd, buf, sizeof(buf) / sizeof(char));
+    
 
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
