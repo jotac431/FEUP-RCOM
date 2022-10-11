@@ -22,10 +22,10 @@
 #define BUF_SIZE 256
 
 // SET buffer values
-#define FLAG 01111110
-#define A    00000011
-#define C    00000011
-#define C_UA   00000111
+#define FLAG 0x7E
+#define A    0x03
+#define C    0x03
+#define C_UA   0x07
 #define BCC  (A^C)
 
 #define START 0
@@ -39,6 +39,7 @@ volatile int STOP = FALSE;
 
 int main(int argc, char *argv[])
 {
+
     // Program usage: Uses either COM1 or COM2
     const char *serialPortName = argv[1];
 
@@ -82,7 +83,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -104,7 +105,13 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Create string to send
-    unsigned char buf[5] = {FLAG, A, C, BCC, FLAG};
+    unsigned char buf[5];
+    
+    buf[0] = FLAG;
+    buf[1] = A;
+    buf[2] = C;
+    buf[3] = BCC;
+    buf[4] = FLAG;
 
     //fgets(buf);
     
@@ -113,6 +120,7 @@ int main(int argc, char *argv[])
     // The whole buffer must be sent even with the '\n'.
 
     int bytes = write(fd, buf, sizeof(buf));
+    printf("%x\n", buf[0]);
     printf("%d bytes written\n", bytes);
 
     // Wait until all bytes have been written to the serial port
@@ -124,7 +132,7 @@ int main(int argc, char *argv[])
     
     while (STOP == FALSE)
     {
-        bytes = read(fd, byte, 1);
+        bytes = read(fd, &byte, 1);
         if(bytes){
             switch(state)
             {

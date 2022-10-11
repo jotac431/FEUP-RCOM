@@ -116,6 +116,7 @@ int main(int argc, char *argv[])
             switch(state)
             {
                 case START:
+                    
                     if(byte == FLAG)
                         state = FLAG_RCV;
                     break;
@@ -158,7 +159,7 @@ int main(int argc, char *argv[])
     
     // Returns after 5 chars have been input
     unsigned char buf[5] = {FLAG, A, C_UA, BCC, FLAG};
-    bytes = write(fd, buf, sizeof(buf) / sizeof(char));
+    bytes = write(fd, buf, sizeof(buf));
     
 
     // The while() cycle should be changed in order to respect the specifications
