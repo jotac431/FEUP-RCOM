@@ -105,7 +105,8 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Loop for input
-    unsigned char byte[5] = {0};
+    //unsigned char byte[5] = {0};
+    unsigned char byte = 0;
     
     int state = START;
 
@@ -114,10 +115,10 @@ int main(int argc, char *argv[])
     while (STOP == FALSE)
     {
 
-        bytes = read(fd, byte, 1);
+        bytes = read(fd, &byte, 1);
         
        if(bytes >0){    
-        printf("%x\n", byte[0]);
+        printf("%x\n", byte);
         switch(state)
             {
                 case START:
