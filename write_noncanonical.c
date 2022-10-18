@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <signal.h>
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -34,6 +35,18 @@
 #define C_RCV 3
 #define BCC_OK 4
 #define S_STOP 5
+
+int alarmEnabled = FALSE;
+int alarmCount = 0;
+
+// Alarm function handler
+void alarmHandler(int signal)
+{
+    alarmEnabled = FALSE;
+    alarmCount++;
+
+    printf("Alarm #%d\n", alarmCount);
+}
 
 volatile int STOP = FALSE;
 
@@ -118,35 +131,54 @@ int main(int argc, char *argv[])
     // In non-canonical mode, '\n' does not end the writing.
     // Test this condition by placing a '\n' in the middle of the buffer.
     // The whole buffer must be sent even with the '\n'.
-
+    
+    // Set alarm function handler
+    
     int bytes = write(fd, buf, sizeof(buf));
+
     printf("%x\n", buf[0]);
     printf("%d bytes written\n", bytes);
 
     // Wait until all bytes have been written to the serial port
     sleep(1);
     
-    unsigned char byte;
+    unsigned char byte = 0;
     
     int state = START;
     
-    while (STOP == FALSE)
+    bytes = 0;
+    
+    (void)signal(SIGALRM, alarmHandler);
+    
+    while (STOP == FALSE && alarmCount < 4)
     {
+        if (alarmEnabled == FALSE)
+        {
+            bytes = write(fd, buf, sizeof(buf));
+            alarm(3); // Set alarm to be triggered in 3s
+            alarmEnabled = TRUE;
+        }
+        
         bytes = read(fd, &byte, 1);
-        if(bytes){
+        
+        if(bytes>0){
+            printf("%x\n", byte);
             switch(state)
             {
                 case START:
+                    printf("START\n");
                     if(byte == FLAG)
                         state = FLAG_RCV;
                     break;
                 case FLAG_RCV:
+                    printf("FLAG_RCV\n");
                     if (byte == A)
                         state = A_RCV;
                     else if(byte != FLAG)           
                         state = START;
                     break;
                 case A_RCV:
+                    printf("A_RCV\n");
                     if (byte == C_UA)
                         state = C_RCV;
                     else if (byte == FLAG)
@@ -155,22 +187,24 @@ int main(int argc, char *argv[])
                         state = START;
                     break;
                 case C_RCV:
+                    printf("C_RCV\n");
                     if (byte == BCC)
                         state = BCC_OK;
-                    else if (byte == FLAG_RCV)
+                    else if (byte == FLAG)
                         state = FLAG_RCV;
                     else
                         state = START;
                     break;
                 case BCC_OK:
-                    if (byte == FLAG_RCV)
-                        state = STOP;
+                    printf("BCC_OK\n");
+                    if (byte == FLAG){
+                        printf("STOP\n");
+                        STOP = TRUE;
+                        alarm(0);
+                        }
                     else
                         state = START;
                     break;
-                case S_STOP:
-                    state = START;
-                    STOP = TRUE;
             }
         }
     }
