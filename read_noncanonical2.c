@@ -160,24 +160,26 @@ int main(int argc, char *argv[])
                     break;
                 case BCC_OK:
                     if (byte == FLAG){
-                        state = STOP;
+                        STOP = TRUE;
                         printf("STOP\n");                    
                     }
                     else
                         state = START;
                     break;
-                case S_STOP:
-                    state = START;
-                    STOP = TRUE;
             }
         }
     }
-    
-    sleep(1);
+    sleep(6);
     
     // Returns after 5 chars have been input
-    unsigned char buf[5] = {FLAG, A, C_UA, BCC, FLAG};
-    bytes = write(fd, buf, sizeof(buf) / sizeof(char));
+    unsigned char buf[5];
+    buf[0] = FLAG;
+    buf[1] = A;
+    buf[2] = C_UA;
+    buf[3] = BCC;
+    buf[4] = FLAG;
+    bytes = write(fd, buf, sizeof(buf));
+    printf("%d bytes written\n", bytes);
     
 
     // The while() cycle should be changed in order to respect the specifications
