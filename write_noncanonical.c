@@ -12,6 +12,9 @@
 #include <unistd.h>
 #include <signal.h>
 
+struct termios oldtio;
+struct termios newtio;
+
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
 #define BAUDRATE B38400
@@ -24,10 +27,10 @@
 
 // SET buffer values
 #define FLAG 0x7E
-#define A    0x03
-#define C    0x03
-#define C_UA   0x07
-#define BCC  (A^C)
+#define A 0x03
+#define C 0x03
+#define C_UA 0x07
+#define BCC (A ^ C)
 
 #define START 0
 #define FLAG_RCV 1
@@ -50,34 +53,83 @@ void alarmHandler(int signal)
 
 volatile int STOP = FALSE;
 
-int main(int argc, char *argv[])
+int state = START;
+
+void stateMachine(int fd, unsigned char a)
 {
 
-    // Program usage: Uses either COM1 or COM2
-    const char *serialPortName = argv[1];
+    unsigned char byte = 0;
 
-    if (argc < 2)
+    int bytes = 0;
+
+    bytes = read(fd, &byte, 1);
+
+    if (bytes > 0)
     {
-        printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
-               argv[0],
-               argv[0]);
-        exit(1);
+        printf("%x\n", byte);
+        switch (state)
+        {
+        case START:
+            printf("START\n");
+            if (byte == FLAG)
+                state = FLAG_RCV;
+            break;
+        case FLAG_RCV:
+            printf("FLAG_RCV\n");
+            if (byte == A)
+                state = A_RCV;
+            else if (byte != FLAG)
+                state = START;
+            break;
+        case A_RCV:
+            printf("A_RCV\n");
+            if (byte == a)
+                state = C_RCV;
+            else if (byte == FLAG)
+                state = FLAG_RCV;
+            else
+                state = START;
+            break;
+        case C_RCV:
+            printf("C_RCV\n");
+            if (byte == BCC)
+                state = BCC_OK;
+            else if (byte == FLAG)
+                state = FLAG_RCV;
+            else
+                state = START;
+            break;
+        case BCC_OK:
+            printf("BCC_OK\n");
+            if (byte == FLAG)
+            {
+                printf("STOP\n");
+                STOP = TRUE;
+                state = START;
+                alarm(0);
+            }
+            else
+                state = START;
+            break;
+        }
     }
+}
 
-    // Open serial port device for reading and writing, and not as controlling tty
-    // because we don't want to get killed if linenoise sends CTRL-C.
-    int fd = open(serialPortName, O_RDWR | O_NOCTTY);
+int sendBuffer(int fd, unsigned char a){
 
-    if (fd < 0)
-    {
-        perror(serialPortName);
-        exit(-1);
-    }
+    // Create string to send
+    unsigned char buf[5];
 
-    struct termios oldtio;
-    struct termios newtio;
+    buf[0] = FLAG;
+    buf[1] = A;
+    buf[2] = C;
+    buf[3] = BCC;
+    buf[4] = FLAG;
+
+    return write(fd, buf, sizeof(buf));
+}
+
+int ll_open(int fd){
 
     // Save current port settings
     if (tcgetattr(fd, &oldtio) == -1)
@@ -117,98 +169,33 @@ int main(int argc, char *argv[])
 
     printf("New termios structure set\n");
 
-    // Create string to send
-    unsigned char buf[5];
-    
-    buf[0] = FLAG;
-    buf[1] = A;
-    buf[2] = C;
-    buf[3] = BCC;
-    buf[4] = FLAG;
-
-    //fgets(buf);
-    
     // In non-canonical mode, '\n' does not end the writing.
     // Test this condition by placing a '\n' in the middle of the buffer.
     // The whole buffer must be sent even with the '\n'.
-    
-    // Set alarm function handler
-    
-    int bytes = write(fd, buf, sizeof(buf));
 
-    printf("%x\n", buf[0]);
+    // Set alarm function handler
+
+    int bytes = sendBuffer(fd, C);
+
     printf("%d bytes written\n", bytes);
 
     // Wait until all bytes have been written to the serial port
     sleep(1);
-    
-    unsigned char byte = 0;
-    
-    int state = START;
-    
+
     bytes = 0;
-    
-    (void)signal(SIGALRM, alarmHandler);
-    
+
     while (STOP == FALSE && alarmCount < 4)
     {
         if (alarmEnabled == FALSE)
         {
-            bytes = write(fd, buf, sizeof(buf));
+            bytes = sendBuffer(fd, C);
             alarm(3); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
         }
+
+        stateMachine(fd, C_UA);
         
-        bytes = read(fd, &byte, 1);
-        
-        if(bytes>0){
-            printf("%x\n", byte);
-            switch(state)
-            {
-                case START:
-                    printf("START\n");
-                    if(byte == FLAG)
-                        state = FLAG_RCV;
-                    break;
-                case FLAG_RCV:
-                    printf("FLAG_RCV\n");
-                    if (byte == A)
-                        state = A_RCV;
-                    else if(byte != FLAG)           
-                        state = START;
-                    break;
-                case A_RCV:
-                    printf("A_RCV\n");
-                    if (byte == C_UA)
-                        state = C_RCV;
-                    else if (byte == FLAG)
-                        state = FLAG_RCV;
-                    else
-                        state = START;
-                    break;
-                case C_RCV:
-                    printf("C_RCV\n");
-                    if (byte == BCC)
-                        state = BCC_OK;
-                    else if (byte == FLAG)
-                        state = FLAG_RCV;
-                    else
-                        state = START;
-                    break;
-                case BCC_OK:
-                    printf("BCC_OK\n");
-                    if (byte == FLAG){
-                        printf("STOP\n");
-                        STOP = TRUE;
-                        alarm(0);
-                        }
-                    else
-                        state = START;
-                    break;
-            }
-        }
     }
-   
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
@@ -220,4 +207,36 @@ int main(int argc, char *argv[])
     close(fd);
 
     return 0;
+}
+
+int main(int argc, char *argv[])
+{
+
+    // Program usage: Uses either COM1 or COM2
+    const char *serialPortName = argv[1];
+
+    if (argc < 2)
+    {
+        printf("Incorrect program usage\n"
+               "Usage: %s <SerialPort>\n"
+               "Example: %s /dev/ttyS1\n",
+               argv[0],
+               argv[0]);
+        exit(1);
+    }
+
+    // Open serial port device for reading and writing, and not as controlling tty
+    // because we don't want to get killed if linenoise sends CTRL-C.
+    int fd = open(serialPortName, O_RDWR | O_NOCTTY);
+
+    if (fd < 0)
+    {
+        perror(serialPortName);
+        exit(-1);
+    }
+
+    (void)signal(SIGALRM, alarmHandler);
+
+    if (!ll_open(fd))
+        return -1;
 }
