@@ -66,7 +66,7 @@ void stateMachine(int fd, unsigned char c)
                 printf("STOP\n");
                 STOP = TRUE;
                 state = START;
-                alarm(0);
+                if (c == C_UA) alarm(0);
             }
             else
                 state = START;
@@ -90,13 +90,34 @@ int sendBuffer(int fd, unsigned char c)
     return write(fd, buf, sizeof(buf));
 }
 
+// Alarm function handler
+void alarmHandler(int signal)
+{
+    alarmEnabled = FALSE;
+    alarmCount++;
+
+    printf("Alarm #%d\n", alarmCount);
+}
+
+
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
+
+    (void)signal(SIGALRM, alarmHandler);
+    
+    int fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
+
+    if (fd < 0)
+    {
+        perror(connectionParameters.serialPort);
+        exit(-1);
+    }
+
     // Save current port settings
-    if (tcgetattr(connectionParameters.serialPort, &oldtio) == -1)
+    if (tcgetattr(fd, &oldtio) == -1)
     {
         perror("tcgetattr");
         exit(-1);
@@ -122,10 +143,10 @@ int llopen(LinkLayer connectionParameters)
     // by fd but not transmitted, or data received but not read,
     // depending on the value of queue_selector:
     //   TCIFLUSH - flushes data received but not read.
-    tcflush(connectionParameters.serialPort, TCIOFLUSH);
+    tcflush(fd, TCIOFLUSH);
 
     // Set new port settings
-    if (tcsetattr(connectionParameters.serialPort, TCSANOW, &newtio) == -1)
+    if (tcsetattr(fd, TCSANOW, &newtio) == -1)
     {
         perror("tcsetattr");
         exit(-1);
@@ -149,25 +170,27 @@ int llopen(LinkLayer connectionParameters)
     switch (connectionParameters.role)
     {
     case LlTx:
+
         while (STOP == FALSE && alarmCount < 4)
         {
             if (alarmEnabled == FALSE)
             {
-                bytes = sendBuffer(connectionParameters.serialPort, C);
+                printf("eheh\n");
+                bytes = sendBuffer(fd, C);
                 printf("%d bytes written\n", bytes);
                 alarm(3); // Set alarm to be triggered in 3s
                 alarmEnabled = TRUE;
             }
 
-            stateMachine(connectionParameters.serialPort, C_UA);
+            stateMachine(fd, C_UA);
         }
         break;
     case LlRx:
         while (STOP == FALSE)
         {
-            stateMachine(connectionParameters.serialPort, C);
+            stateMachine(fd, C);
         }
-        bytes = sendBuffer(connectionParameters.serialPort, C_UA);
+        bytes = sendBuffer(fd, C_UA);
         printf("%d bytes written\n", bytes);
         break;
     default:
@@ -175,13 +198,13 @@ int llopen(LinkLayer connectionParameters)
     }
 
     // Restore the old port settings
-    if (tcsetattr(connectionParameters.serialPort, TCSANOW, &oldtio) == -1)
+    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
     {
         perror("tcsetattr");
         exit(-1);
     }
 
-    close(connectionParameters.serialPort);
+    close(fd);
 
     return 0;
 }

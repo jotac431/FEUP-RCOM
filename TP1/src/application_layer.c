@@ -10,20 +10,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     layer.baudRate = baudRate;
     layer.nRetransmissions = nTries;
 
-    switch (*role)
-    {
-    case 't':
-        layer.role = LlTx;
-        break;
-    case 'r':
-        layer.role = LlRx;
-        break;
-    default:
-        break;
-    }
+    if (strcmp(role, "tx") == 0) layer.role = LlTx;
+    if (strcmp(role, "rx") == 0) layer.role = LlRx;
 
-    sprintf(layer.serialPort, "%s", *serialPort);
+    sprintf(layer.serialPort, "%s", serialPort);
     layer.timeout = timeout;
 
     llopen(layer);
+
 }
