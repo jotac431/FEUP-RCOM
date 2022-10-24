@@ -2,6 +2,8 @@
 
 #include "application_layer.h"
 
+
+
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
@@ -17,5 +19,19 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     layer.timeout = timeout;
 
     llopen(layer);
+
+    switch (layer.role)
+    {
+    case LlTx:
+        transmitter();
+        break;
+    case LlRx:
+        receiver();
+        break;
+    default:
+        break;
+    }
+
+    llclose(FALSE);
 
 }

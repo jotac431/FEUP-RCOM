@@ -54,6 +54,7 @@ typedef struct
 #define C_UA 0x07
 #define BCC (A ^ C)
 #define BCC_UA (A ^ C_UA)
+#define DISC 0x0B
 
 #define START 0
 #define FLAG_RCV 1
@@ -62,11 +63,20 @@ typedef struct
 #define BCC_OK 4
 #define S_STOP 5
 
+// Returns role
+LinkLayerRole getRole();
+
+// Returns number of transmissions
+int getnTransmissions();
+
+// Returns timeout
+int getTimeOut();
+
 // State machine
-void stateMachine(int fd, unsigned char c);
+void stateMachine(unsigned char c);
 
 // Fills tram
-int sendBuffer(int fd, unsigned char c);
+int sendBuffer(unsigned char c);
 
 // Open a connection using the "port" parameters defined in struct linkLayer.
 // Return "1" on success or "-1" on error.

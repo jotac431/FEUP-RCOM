@@ -15,7 +15,28 @@ volatile int STOP = FALSE;
 
 int state = START;
 
-void stateMachine(int fd, unsigned char c)
+int fd;
+
+int bytes;
+
+LinkLayer layer;
+
+LinkLayerRole getRole()
+{
+    return layer.role;
+}
+
+int getnTransmissions()
+{
+    return layer.nRetransmissions;
+}
+
+int getTimeOut()
+{
+    return layer.timeout;
+}
+
+void stateMachine(unsigned char c)
 {
 
     unsigned char byte = 0;
@@ -66,7 +87,8 @@ void stateMachine(int fd, unsigned char c)
                 printf("STOP\n");
                 STOP = TRUE;
                 state = START;
-                if (c == C_UA) alarm(0);
+                if (c == C_UA)
+                    alarm(0);
             }
             else
                 state = START;
@@ -75,7 +97,7 @@ void stateMachine(int fd, unsigned char c)
     }
 }
 
-int sendBuffer(int fd, unsigned char c)
+int sendBuffer(unsigned char c)
 {
 
     // Create string to send
@@ -99,16 +121,16 @@ void alarmHandler(int signal)
     printf("Alarm #%d\n", alarmCount);
 }
 
-
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
+    layer = connectionParameters;
 
     (void)signal(SIGALRM, alarmHandler);
-    
-    int fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
+
+    fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
 
     if (fd < 0)
     {
@@ -171,40 +193,31 @@ int llopen(LinkLayer connectionParameters)
     {
     case LlTx:
 
-        while (STOP == FALSE && alarmCount < 4)
+        while (STOP == FALSE && alarmCount < connectionParameters.nRetransmissions)
         {
             if (alarmEnabled == FALSE)
             {
-                printf("eheh\n");
-                bytes = sendBuffer(fd, C);
+                bytes = sendBuffer(C);
                 printf("%d bytes written\n", bytes);
-                alarm(3); // Set alarm to be triggered in 3s
+                alarm(connectionParameters.timeout); // Set alarm to be triggered
                 alarmEnabled = TRUE;
+                state = START;
             }
 
-            stateMachine(fd, C_UA);
+            stateMachine(C_UA);
         }
         break;
     case LlRx:
         while (STOP == FALSE)
         {
-            stateMachine(fd, C);
+            stateMachine(C);
         }
-        bytes = sendBuffer(fd, C_UA);
+        bytes = sendBuffer(C_UA);
         printf("%d bytes written\n", bytes);
         break;
     default:
         break;
     }
-
-    // Restore the old port settings
-    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
-    {
-        perror("tcsetattr");
-        exit(-1);
-    }
-
-    close(fd);
 
     return 0;
 }
@@ -234,7 +247,65 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {
-    // TODO
+    STOP = FALSE;
 
-    return 1;
+    alarmEnabled = FALSE;
+    alarmCount = 0;
+
+    state = START;
+
+    switch (getRole())
+    {
+    case LlTx:
+
+        while (STOP == FALSE && alarmCount < getnTransmissions())
+        {
+            if (alarmEnabled == FALSE)
+            {
+                bytes = sendBuffer(DISC);
+                printf("Sent DISC\n");
+                printf("%d bytes written\n", bytes);
+                alarm(getTimeOut()); // Set alarm to be triggered
+                alarmEnabled = TRUE;
+            }
+
+            stateMachine(DISC);
+        }
+        if (alarmCount == getnTransmissions()) return -1;
+        printf("Received DISC\n");
+        bytes = sendBuffer(C_UA);
+        printf("Sent UA\n");
+        printf("%d bytes written\n", bytes);
+        break;
+    case LlRx:
+        while (STOP == FALSE)
+        {
+            stateMachine(DISC);
+        }
+        printf("Received DISC\n");
+        bytes = sendBuffer(DISC);
+        printf("Sent DISC\n");
+        printf("%d bytes written\n", bytes);
+        STOP = FALSE;
+        state = START;
+        while (STOP == FALSE)
+        {
+            stateMachine(C_UA);
+        }
+        printf("Received UA\n");
+        break;
+    default:
+        break;
+    }
+
+    // Restore the old port settings
+    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
+    {
+        perror("tcsetattr");
+        exit(-1);
+    }
+
+    close(fd);
+
+    return 0;
 }
