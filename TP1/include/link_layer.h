@@ -56,6 +56,9 @@ typedef struct
 #define BCC (A ^ C)
 #define BCC_UA (A ^ C_UA)
 #define DISC 0x0B
+#define RR(n) 0x05 | (n << 7) // 0 ou 1
+#define REJ(n) 0x01 | (n << 7) // 0 ou 1
+#define C_INF(n) (n<<6) // 0 ou 1
 
 #define START 0
 #define FLAG_RCV 1

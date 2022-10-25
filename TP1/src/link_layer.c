@@ -225,9 +225,47 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
+unsigned char calculateBCC2(const unsigned char *buf, int bufSize)
+{
+    unsigned char BCC2 = 0x00;
+
+    for (unsigned int i = 0; i < bufSize; i++)
+    {
+        BCC2 = BCC2 ^ buf[i];
+    }
+
+    return BCC2;
+}
+
+void copyMsg(const unsigned char *buf, int bufSize, unsigned char *new_buf, unsigned char newSize)
+{
+    for (unsigned int i = 0; i < bufSize; i++)
+    {
+        new_buf[i + 4] = buf[i];
+    }
+}
+
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    // TODO
+    int newSize = bufSize + 6; // FLAG + A + C + BCC1 + .... + BCC2 + FLAG
+    int S = 0;
+    unsigned char *newMsg = malloc(sizeof(unsigned char) * newSize);
+
+    unsigned char BCC2 = calculateBCC2(buf, bufSize);
+
+    newMsg[0] = FLAG;
+    newMsg[1] = A_T;
+    newMsg[2] = C;
+    newMsg[3] = RR(S);
+    newMsg[newSize - 2] = BCC2;
+    newMsg[newSize - 1] = FLAG;
+
+    copyMsg(buf, bufSize, newMsg, newSize);
+
+    STOP = FALSE;
+    alarmEnabled = FALSE;
+    alarmCount = 0;
+    state = START;
 
     return 0;
 }
@@ -271,7 +309,8 @@ int llclose(int showStatistics)
 
             stateMachine(A_R, DISC);
         }
-        if (alarmCount == getnTransmissions()) return -1;
+        if (alarmCount == getnTransmissions())
+            return -1;
         printf("Received DISC\n");
         bytes = sendBuffer(A_R, C_UA);
         printf("Sent UA\n");
