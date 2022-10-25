@@ -36,7 +36,7 @@ int getTimeOut()
     return layer.timeout;
 }
 
-void stateMachine(unsigned char c)
+void stateMachine(unsigned char a, unsigned char c)
 {
 
     unsigned char byte = 0;
@@ -57,7 +57,7 @@ void stateMachine(unsigned char c)
             break;
         case FLAG_RCV:
             printf("FLAG_RCV\n");
-            if (byte == A)
+            if (byte == a)
                 state = A_RCV;
             else if (byte != FLAG)
                 state = START;
@@ -73,7 +73,7 @@ void stateMachine(unsigned char c)
             break;
         case C_RCV:
             printf("C_RCV\n");
-            if (byte == (A ^ c))
+            if (byte == (a ^ c))
                 state = BCC_OK;
             else if (byte == FLAG)
                 state = FLAG_RCV;
@@ -97,16 +97,16 @@ void stateMachine(unsigned char c)
     }
 }
 
-int sendBuffer(unsigned char c)
+int sendBuffer(unsigned char a, unsigned char c)
 {
 
     // Create string to send
     unsigned char buf[5];
 
     buf[0] = FLAG;
-    buf[1] = A;
+    buf[1] = a;
     buf[2] = c;
-    buf[3] = A ^ c;
+    buf[3] = a ^ c;
     buf[4] = FLAG;
 
     return write(fd, buf, sizeof(buf));
@@ -197,22 +197,22 @@ int llopen(LinkLayer connectionParameters)
         {
             if (alarmEnabled == FALSE)
             {
-                bytes = sendBuffer(C);
+                bytes = sendBuffer(A_T, C);
                 printf("%d bytes written\n", bytes);
                 alarm(connectionParameters.timeout); // Set alarm to be triggered
                 alarmEnabled = TRUE;
                 state = START;
             }
 
-            stateMachine(C_UA);
+            stateMachine(A_T, C_UA);
         }
         break;
     case LlRx:
         while (STOP == FALSE)
         {
-            stateMachine(C);
+            stateMachine(A_T, C);
         }
-        bytes = sendBuffer(C_UA);
+        bytes = sendBuffer(A_T, C_UA);
         printf("%d bytes written\n", bytes);
         break;
     default:
@@ -262,35 +262,35 @@ int llclose(int showStatistics)
         {
             if (alarmEnabled == FALSE)
             {
-                bytes = sendBuffer(DISC);
+                bytes = sendBuffer(A_T, DISC);
                 printf("Sent DISC\n");
                 printf("%d bytes written\n", bytes);
                 alarm(getTimeOut()); // Set alarm to be triggered
                 alarmEnabled = TRUE;
             }
 
-            stateMachine(DISC);
+            stateMachine(A_R, DISC);
         }
         if (alarmCount == getnTransmissions()) return -1;
         printf("Received DISC\n");
-        bytes = sendBuffer(C_UA);
+        bytes = sendBuffer(A_R, C_UA);
         printf("Sent UA\n");
         printf("%d bytes written\n", bytes);
         break;
     case LlRx:
         while (STOP == FALSE)
         {
-            stateMachine(DISC);
+            stateMachine(A_T, DISC);
         }
         printf("Received DISC\n");
-        bytes = sendBuffer(DISC);
+        bytes = sendBuffer(A_R, DISC);
         printf("Sent DISC\n");
         printf("%d bytes written\n", bytes);
         STOP = FALSE;
         state = START;
         while (STOP == FALSE)
         {
-            stateMachine(C_UA);
+            stateMachine(A_R, C_UA);
         }
         printf("Received UA\n");
         break;

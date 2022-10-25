@@ -49,7 +49,8 @@ typedef struct
 
 // SET buffer values
 #define FLAG 0x7E
-#define A 0x03
+#define A_T 0x03
+#define A_R 0x01
 #define C 0x03
 #define C_UA 0x07
 #define BCC (A ^ C)
@@ -73,10 +74,10 @@ int getnTransmissions();
 int getTimeOut();
 
 // State machine
-void stateMachine(unsigned char c);
+void stateMachine(unsigned char a, unsigned char c);
 
 // Fills tram
-int sendBuffer(unsigned char c);
+int sendBuffer(unsigned char a, unsigned char c);
 
 // Open a connection using the "port" parameters defined in struct linkLayer.
 // Return "1" on success or "-1" on error.
