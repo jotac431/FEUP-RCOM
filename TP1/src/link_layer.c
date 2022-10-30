@@ -197,7 +197,7 @@ int llopen(LinkLayer connectionParameters)
         {
             if (alarmEnabled == FALSE)
             {
-                bytes = sendBuffer(A_T, C);
+                bytes = sendBuffer(A_T, C_SET);
                 printf("%d bytes written\n", bytes);
                 alarm(connectionParameters.timeout); // Set alarm to be triggered
                 alarmEnabled = TRUE;
@@ -210,7 +210,7 @@ int llopen(LinkLayer connectionParameters)
     case LlRx:
         while (STOP == FALSE)
         {
-            stateMachine(A_T, C);
+            stateMachine(A_T, C_SET);
         }
         bytes = sendBuffer(A_T, C_UA);
         printf("%d bytes written\n", bytes);
@@ -242,6 +242,7 @@ void copyMsg(const unsigned char *buf, int bufSize, unsigned char *new_buf, unsi
     for (unsigned int i = 0; i < bufSize; i++)
     {
         new_buf[i + 4] = buf[i];
+        printf("%x\n", buf[i]);
     }
 }
 
@@ -255,7 +256,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     newMsg[0] = FLAG;
     newMsg[1] = A_T;
-    newMsg[2] = C;
+    newMsg[2] = C_SET;
     newMsg[3] = RR(S);
     newMsg[newSize - 2] = BCC2;
     newMsg[newSize - 1] = FLAG;
@@ -267,6 +268,20 @@ int llwrite(const unsigned char *buf, int bufSize)
     alarmCount = 0;
     state = START;
 
+    while (STOP == FALSE && alarmCount < layer.nRetransmissions)
+    {
+        if (alarmEnabled == FALSE)
+        {
+            bytes = write(fd, newMsg, newSize);
+            printf("%d bytes written\n", bytes);
+            alarm(layer.timeout); // Set alarm to be triggered
+            alarmEnabled = TRUE;
+            state = START;
+        }
+
+        // stateMachine(A_T, C_UA);
+    }
+
     return 0;
 }
 
@@ -275,7 +290,23 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    // TODO
+    int bytesread = 0;
+
+    unsigned char rcvmsg[5];
+
+    unsigned char byte = 0;
+
+    int bytes = 0;
+
+    while (1)
+    {
+        bytes = read(fd, &byte, 1);
+
+        if (bytes > 0)
+        {
+            printf("%x\n", byte);
+        }
+    }
 
     return 0;
 }

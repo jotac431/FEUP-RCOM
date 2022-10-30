@@ -19,6 +19,16 @@ int transmitter(const char *filename)
         return -1;
     }
 
+    unsigned char example[5];
+
+    example[0] = 0x01;
+    example[1] = 0x02;
+    example[2] = 0x03;
+    example[3] = 0x04;
+    example[4] = 0x05;
+    
+    llwrite(example, 5);
+
     return 0;
 }
 

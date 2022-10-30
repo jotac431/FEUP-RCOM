@@ -51,10 +51,9 @@ typedef struct
 #define FLAG 0x7E
 #define A_T 0x03
 #define A_R 0x01
-#define C 0x03
+#define C_SET 0x03
 #define C_UA 0x07
-#define BCC (A ^ C)
-#define BCC_UA (A ^ C_UA)
+#define BCC(a, c) (a^c) 
 #define DISC 0x0B
 #define RR(n) 0x05 | (n << 7) // 0 ou 1
 #define REJ(n) 0x01 | (n << 7) // 0 ou 1
