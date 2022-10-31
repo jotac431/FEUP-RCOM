@@ -32,7 +32,8 @@ typedef struct
 
 // SIZE of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer
-#define MAX_PAYLOAD_SIZE 1000
+#define MAX_PACKET_SIZE 256
+#define MAX_BUFFER_SIZE (MAX_PACKET_SIZE * 2 + 7)
 
 // MISC
 #define FALSE 0
@@ -78,7 +79,7 @@ int getnTransmissions();
 int getTimeOut();
 
 // State machine
-void stateMachine(unsigned char a, unsigned char c);
+unsigned char stateMachine(unsigned char a, unsigned char c, int isData);
 
 // Fills tram
 int sendBuffer(unsigned char a, unsigned char c);

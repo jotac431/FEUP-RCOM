@@ -36,7 +36,7 @@ int getTimeOut()
     return layer.timeout;
 }
 
-void stateMachinePacket(unsigned char a, unsigned char c)
+unsigned char stateMachine(unsigned char a, unsigned char c, int isData)
 {
 
     unsigned char byte = 0;
@@ -74,7 +74,10 @@ void stateMachinePacket(unsigned char a, unsigned char c)
         case C_RCV:
             printf("C_RCV\n");
             if (byte == (a ^ c))
+            {
+                if (isData) STOP = TRUE;
                 state = BCC_OK;
+            }
             else if (byte == FLAG)
                 state = FLAG_RCV;
             else
@@ -95,67 +98,8 @@ void stateMachinePacket(unsigned char a, unsigned char c)
             break;
         }
     }
-}
 
-void stateMachine(unsigned char a, unsigned char c)
-{
-
-    unsigned char byte = 0;
-
-    int bytes = 0;
-
-    bytes = read(fd, &byte, 1);
-
-    if (bytes > 0)
-    {
-        printf("%x\n", byte);
-        switch (state)
-        {
-        case START:
-            printf("START\n");
-            if (byte == FLAG)
-                state = FLAG_RCV;
-            break;
-        case FLAG_RCV:
-            printf("FLAG_RCV\n");
-            if (byte == a)
-                state = A_RCV;
-            else if (byte != FLAG)
-                state = START;
-            break;
-        case A_RCV:
-            printf("A_RCV\n");
-            if (byte == c)
-                state = C_RCV;
-            else if (byte == FLAG)
-                state = FLAG_RCV;
-            else
-                state = START;
-            break;
-        case C_RCV:
-            printf("C_RCV\n");
-            if (byte == (a ^ c))
-                state = BCC_OK;
-            else if (byte == FLAG)
-                state = FLAG_RCV;
-            else
-                state = START;
-            break;
-        case BCC_OK:
-            printf("BCC_OK\n");
-            if (byte == FLAG)
-            {
-                printf("STOP\n");
-                STOP = TRUE;
-                state = START;
-                if (c == C_UA)
-                    alarm(0);
-            }
-            else
-                state = START;
-            break;
-        }
-    }
+    return byte;
 }
 
 int sendBuffer(unsigned char a, unsigned char c)
@@ -265,13 +209,13 @@ int llopen(LinkLayer connectionParameters)
                 state = START;
             }
 
-            stateMachine(A_T, C_UA);
+            stateMachine(A_T, C_UA, 0);
         }
         break;
     case LlRx:
         while (STOP == FALSE)
         {
-            stateMachine(A_T, C_SET);
+            stateMachine(A_T, C_SET, 0);
         }
         bytes = sendBuffer(A_T, C_UA);
         printf("%d bytes written\n", bytes);
@@ -300,7 +244,8 @@ int stuffing(const unsigned char *msg, int newSize, unsigned int *stuffedMsg)
             stuffedMsg[size++] = ESCAPE;
             stuffedMsg[size++] = msg[i] ^ 0x20;
         }
-        else  {
+        else
+        {
             stuffedMsg[size++] = msg[i];
         }
     }
@@ -321,12 +266,28 @@ int destuffing(const unsigned char *msg, int newSize, unsigned int *destuffedMsg
             destuffedMsg[size++] = msg[i + 1] ^ 0x20;
             i++;
         }
-        else  {
+        else
+        {
             destuffedMsg[size++] = msg[i];
         }
     }
 
     return size;
+}
+
+unsigned char calculateBCC2(const unsigned char *buf, int dataSize, int startingByte)
+{
+    if (dataSize < 0)
+    {
+        printf("Error buf Size: %d\n", dataSize);
+    }
+    unsigned char BCC2 = 0x00;
+    for (unsigned int i = startingByte; i < dataSize; i++)
+    {
+        BCC2 ^= buf[i];
+    }
+    printf("Calculate BCC2: %x", BCC2);
+    return BCC2;
 }
 
 int llwrite(const unsigned char *buf, int bufSize)
@@ -335,7 +296,7 @@ int llwrite(const unsigned char *buf, int bufSize)
     int S = 0;
     unsigned char msg[newSize];
 
-    static int packet;
+    static int packet = 0;
 
     msg[0] = FLAG;
     msg[1] = A_T;
@@ -346,9 +307,10 @@ int llwrite(const unsigned char *buf, int bufSize)
     for (int i = 0; i < bufSize; i++)
     {
         msg[i + 4] = buf[i];
-        if (i > 0) BCC2 ^= buf[i];
+        if (i > 0)
+            BCC2 ^= buf[i];
     }
-    
+
     msg[bufSize + 4] = BCC2;
 
     unsigned char stuffed[newSize * 2];
@@ -367,7 +329,7 @@ int llwrite(const unsigned char *buf, int bufSize)
     {
         if (alarmEnabled == FALSE)
         {
-            bytes = write(fd, msg, newSize);
+            bytes = write(fd, stuffed, newSize);
             printf("Data Enviada. %d bytes written\n", bytes);
             numtries++;
             alarm(layer.timeout); // Set alarm to be triggered
@@ -384,24 +346,26 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(unsigned char *packet)
+int llread(unsigned char *packett)
 {
     int bytesread = 0;
 
-    unsigned char rcvmsg[5];
+    static int packet = 0;
+
+    unsigned char stuffedMsg[MAX_BUFFER_SIZE];
+    unsigned char unstuffedMsg[MAX_PACKET_SIZE + 7];
+
+    STOP = FALSE;
+    state = START;
 
     unsigned char byte = 0;
 
     int bytes = 0;
 
-    while (1)
+    while (STOP == FALSE && bytesread < MAX_BUFFER_SIZE)
     {
-        bytes = read(fd, &byte, 1);
-
-        if (bytes > 0)
-        {
-            printf("%x\n", byte);
-        }
+        byte = stateMachine(A_T, C_INF(packet), 1);
+        stuffedMsg[bytesread++] = byte;
     }
 
     return 0;
@@ -434,7 +398,7 @@ int llclose(int showStatistics)
                 alarmEnabled = TRUE;
             }
 
-            stateMachine(A_R, DISC);
+            stateMachine(A_R, DISC, 0);
         }
         if (alarmCount == getnTransmissions())
             return -1;
@@ -446,7 +410,7 @@ int llclose(int showStatistics)
     case LlRx:
         while (STOP == FALSE)
         {
-            stateMachine(A_T, DISC);
+            stateMachine(A_T, DISC, 0);
         }
         printf("Received DISC\n");
         bytes = sendBuffer(A_R, DISC);
@@ -456,7 +420,7 @@ int llclose(int showStatistics)
         state = START;
         while (STOP == FALSE)
         {
-            stateMachine(A_R, C_UA);
+            stateMachine(A_R, C_UA, 0);
         }
         printf("Received UA\n");
         break;
