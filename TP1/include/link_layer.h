@@ -59,6 +59,8 @@ typedef struct
 #define REJ(n) 0x01 | (n << 7) // 0 ou 1
 #define C_INF(n) (n<<6) // 0 ou 1
 
+#define ESCAPE 0x7D
+
 #define START 0
 #define FLAG_RCV 1
 #define A_RCV 2

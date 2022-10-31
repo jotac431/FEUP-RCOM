@@ -36,6 +36,67 @@ int getTimeOut()
     return layer.timeout;
 }
 
+void stateMachinePacket(unsigned char a, unsigned char c)
+{
+
+    unsigned char byte = 0;
+
+    int bytes = 0;
+
+    bytes = read(fd, &byte, 1);
+
+    if (bytes > 0)
+    {
+        printf("%x\n", byte);
+        switch (state)
+        {
+        case START:
+            printf("START\n");
+            if (byte == FLAG)
+                state = FLAG_RCV;
+            break;
+        case FLAG_RCV:
+            printf("FLAG_RCV\n");
+            if (byte == a)
+                state = A_RCV;
+            else if (byte != FLAG)
+                state = START;
+            break;
+        case A_RCV:
+            printf("A_RCV\n");
+            if (byte == c)
+                state = C_RCV;
+            else if (byte == FLAG)
+                state = FLAG_RCV;
+            else
+                state = START;
+            break;
+        case C_RCV:
+            printf("C_RCV\n");
+            if (byte == (a ^ c))
+                state = BCC_OK;
+            else if (byte == FLAG)
+                state = FLAG_RCV;
+            else
+                state = START;
+            break;
+        case BCC_OK:
+            printf("BCC_OK\n");
+            if (byte == FLAG)
+            {
+                printf("STOP\n");
+                STOP = TRUE;
+                state = START;
+                if (c == C_UA)
+                    alarm(0);
+            }
+            else
+                state = START;
+            break;
+        }
+    }
+}
+
 void stateMachine(unsigned char a, unsigned char c)
 {
 
@@ -225,55 +286,67 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-unsigned char calculateBCC2(const unsigned char *buf, int bufSize)
-{
-    unsigned char BCC2 = 0x00;
 
-    for (unsigned int i = 0; i < bufSize; i++)
+int stuffing(const unsigned char *msg, int newSize, unsigned int *stuffedMsg)
+{
+    int size = 0;
+
+    stuffedMsg[size++] = msg[0];
+
+    for (int i = 1; i < newSize; i++)
     {
-        BCC2 = BCC2 ^ buf[i];
+        if (msg[i] == FLAG || msg[i] == ESCAPE)
+        {
+            stuffedMsg[size++] = ESCAPE;
+            stuffedMsg[size++] = msg[i] ^ 0x20;
+        }
+        else  {
+            stuffedMsg[size++] = msg[i];
+        }
     }
 
-    return BCC2;
-}
-
-void copyMsg(const unsigned char *buf, int bufSize, unsigned char *new_buf, unsigned char newSize)
-{
-    for (unsigned int i = 0; i < bufSize; i++)
-    {
-        new_buf[i + 4] = buf[i];
-        printf("%x\n", buf[i]);
-    }
+    return size;
 }
 
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    int newSize = bufSize + 6; // FLAG + A + C + BCC1 + .... + BCC2 + FLAG
+    int newSize = bufSize + 5; // FLAG + A + C + BCC1 + .... + BCC2 + FLAG
     int S = 0;
-    unsigned char *newMsg = malloc(sizeof(unsigned char) * newSize);
+    unsigned char msg[newSize];
 
-    unsigned char BCC2 = calculateBCC2(buf, bufSize);
+    static int packet;
 
-    newMsg[0] = FLAG;
-    newMsg[1] = A_T;
-    newMsg[2] = C_SET;
-    newMsg[3] = RR(S);
-    newMsg[newSize - 2] = BCC2;
-    newMsg[newSize - 1] = FLAG;
+    msg[0] = FLAG;
+    msg[1] = A_T;
+    msg[2] = C_INF(packet);
+    msg[3] = BCC(A_T, C_INF(packet));
 
-    copyMsg(buf, bufSize, newMsg, newSize);
+    unsigned char BCC2 = buf[0];
+    for (int i = 0; i < bufSize; i++)
+    {
+        msg[i + 4] = buf[i];
+        if (i > 0) BCC2 ^= buf[i];
+    }
+    
+    msg[bufSize + 4] = BCC2;
+
+    unsigned char stuffed[newSize * 2];
+    newSize = stuffing(msg, newSize, &stuffed);
 
     STOP = FALSE;
     alarmEnabled = FALSE;
     alarmCount = 0;
     state = START;
 
+    int numtries = 0;
+
     while (STOP == FALSE && alarmCount < layer.nRetransmissions)
     {
         if (alarmEnabled == FALSE)
         {
-            bytes = write(fd, newMsg, newSize);
-            printf("%d bytes written\n", bytes);
+            bytes = write(fd, msg, newSize);
+            printf("Data Enviada. %d bytes written\n", bytes);
+            numtries++;
             alarm(layer.timeout); // Set alarm to be triggered
             alarmEnabled = TRUE;
             state = START;
