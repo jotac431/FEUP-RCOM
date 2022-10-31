@@ -370,7 +370,7 @@ int llwrite(const unsigned char *buf, int bufSize)
             bytes = write(fd, msg, newSize);
             printf("Data Enviada. %d bytes written\n", bytes);
             numtries++;
-            alarm(layer.timeout); // Set alarm to be triggered
+            alarm(layer.timeout); // Set alarm to be triggeredd
             alarmEnabled = TRUE;
             state = START;
         }
