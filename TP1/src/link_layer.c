@@ -308,6 +308,27 @@ int stuffing(const unsigned char *msg, int newSize, unsigned int *stuffedMsg)
     return size;
 }
 
+int destuffing(const unsigned char *msg, int newSize, unsigned int *destuffedMsg)
+{
+    int size = 0;
+
+    destuffedMsg[size++] = msg[0];
+
+    for (int i = 1; i < newSize; i++)
+    {
+        if (msg[i] == ESCAPE)
+        {
+            destuffedMsg[size++] = msg[i + 1] ^ 0x20;
+            i++;
+        }
+        else  {
+            destuffedMsg[size++] = msg[i];
+        }
+    }
+
+    return size;
+}
+
 int llwrite(const unsigned char *buf, int bufSize)
 {
     int newSize = bufSize + 5; // FLAG + A + C + BCC1 + .... + BCC2 + FLAG
@@ -332,6 +353,8 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     unsigned char stuffed[newSize * 2];
     newSize = stuffing(msg, newSize, &stuffed);
+    stuffed[newSize] = FLAG;
+    newSize++;
 
     STOP = FALSE;
     alarmEnabled = FALSE;
