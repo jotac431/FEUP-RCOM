@@ -21,6 +21,8 @@ int bytes;
 
 unsigned char readbyte;
 
+int response = -1;
+
 LinkLayer layer;
 
 LinkLayerRole getRole()
@@ -38,7 +40,7 @@ int getTimeOut()
     return layer.timeout;
 }
 
-int stateMachine(unsigned char a, unsigned char c, int isData)
+int stateMachine(unsigned char a, unsigned char c, int isData, int RR_REJ)
 {
 
     unsigned char byte = 0;
@@ -65,15 +67,61 @@ int stateMachine(unsigned char a, unsigned char c, int isData)
             break;
         case A_RCV:
             printf("A_RCV\n");
-            if (byte == c)
-                state = C_RCV;
-            else if (byte == FLAG)
-                state = FLAG_RCV;
+            if (RR_REJ)
+            {
+                switch (byte)
+                {
+                case RR(0):
+                    response = RR0;
+                    state = C_RCV;
+                    break;
+                case RR(1):
+                    response = RR1;
+                    state = C_RCV;
+                    break;
+                case REJ(0):
+                    response = REJ0;
+                    state = C_RCV;
+                    break;
+                case REJ(1):
+                    response = REJ1;
+                    state = C_RCV;
+                    break;
+                default:
+                    state = START;
+                    break;
+                }
+            }
             else
-                state = START;
+            {
+                if (byte == c)
+                    state = C_RCV;
+                else if (byte == FLAG)
+                    state = FLAG_RCV;
+                else
+                    state = START;
+            }
             break;
         case C_RCV:
             printf("C_RCV\n");
+            switch (response)
+            {
+            case RR0:
+                c = RR(0);
+                break;
+            case RR1:
+                c = RR(1);
+                break;
+            case REJ0:
+                c = REJ(0);
+                break;
+            case REJ1:
+                c = REJ(1);
+                break;
+            default:
+                break;
+            }
+            printf("%d\n", response);
             if (byte == (a ^ c))
             {
                 if (isData)
@@ -91,7 +139,7 @@ int stateMachine(unsigned char a, unsigned char c, int isData)
             if (byte == FLAG)
             {
                 STOP = TRUE;
-                //alarm(0);
+                // alarm(0);
             }
             break;
         case BCC_OK:
@@ -223,14 +271,14 @@ int llopen(LinkLayer connectionParameters)
                 state = START;
             }
 
-            stateMachine(A_T, C_UA, 0);
+            stateMachine(A_T, C_UA, 0, 0);
         }
         printf("LLOPEN OK\n");
         break;
     case LlRx:
         while (STOP == FALSE)
         {
-            stateMachine(A_T, C_SET, 0);
+            stateMachine(A_T, C_SET, 0, 0);
         }
         bytes = sendBuffer(A_T, C_UA);
         printf("RESPONSE TO LLOPEN TRANSMITER. %d bytes written\n", bytes);
@@ -357,20 +405,28 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     int numtries = 0;
 
-    while (STOP == FALSE && alarmCount < layer.nRetransmissions)
+    int rcvd = FALSE;
+
+    while (STOP == FALSE && alarmCount < layer.nRetransmissions && !rcvd)
     {
         if (alarmEnabled == FALSE)
         {
             numtries++;
             bytes = write(fd, stuffed, newSize);
             printf("Data Enviada. %d bytes written, %dº try...\n", bytes, numtries);
+            packet = (packet + 1) % 2;
             alarm(layer.timeout); // Set alarm to be triggered
             alarmEnabled = TRUE;
             state = START;
         }
 
-        // stateMachine(A_T, C_UA);
+        stateMachine(A_T, RR_R, 0, 1);
+
+        if ((packet == 0 && response == RR1) || (packet == 1 && response == RR0)){
+            rcvd = TRUE;
+        }
     }
+    printf("Data Accepted!\n");
 
     return 0;
 }
@@ -378,7 +434,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(unsigned char *packett)
+int llread(unsigned char *buffer)
 {
     int bytesread = 0;
 
@@ -394,7 +450,7 @@ int llread(unsigned char *packett)
 
     while (STOP == FALSE)
     {
-        if (stateMachine(A_T, C_INF(packet), 1))
+        if (stateMachine(A_T, C_INF(packet), 1, 0))
         {
             stuffedMsg[bytesread] = readbyte;
             printf("STUFFED MSG %x\n", stuffedMsg[bytesread]);
@@ -408,13 +464,27 @@ int llread(unsigned char *packett)
 
     unsigned char receivedBCC2 = unstuffedMsg[s - 1];
     printf("RECEIVED BCC2: %x\n", receivedBCC2);
-    unsigned char receivedDataBCC2 = calculateBCC2(unstuffedMsg, s - 1, 4);
-    printf("EXPECTED BCC2: %x\n", receivedDataBCC2);
+    unsigned char expectedBCC2 = calculateBCC2(unstuffedMsg, s - 1, 4);
+    printf("EXPECTED BCC2: %x\n", expectedBCC2);
 
-    if (receivedBCC2 == receivedDataBCC2 && unstuffedMsg[2] == C_INF(packet))
+    if (receivedBCC2 == expectedBCC2 && unstuffedMsg[2] == C_INF(packet))
     {
         packet = (packet + 1) % 2;
-        printf("STATUS 1 ALL OK: %x , %x\n", receivedBCC2, unstuffedMsg[2]);
+        sendBuffer(A_T, RR(packet));
+        memcpy(buffer, &unstuffedMsg[4], s - 5);
+        printf("STATUS 1 ALL OK: %x , %x\nSENDING RESPONSE\n", receivedBCC2, unstuffedMsg[2]);
+    }
+    else if (receivedBCC2 == expectedBCC2)
+    {
+        sendBuffer(A_T, RR(packet));
+        tcflush(fd, TCIFLUSH);
+        printf("Duplicate packet!\n");
+    }
+    else
+    {
+        sendBuffer(A_T, REJ(packet));
+        tcflush(fd, TCIFLUSH);
+        printf("Error in BCC2, sent REJ\n");
     }
     return 0;
 }
@@ -430,6 +500,7 @@ int llclose(int showStatistics)
     alarmCount = 0;
 
     state = START;
+    response = OTHER;
 
     switch (getRole())
     {
@@ -446,7 +517,7 @@ int llclose(int showStatistics)
                 alarmEnabled = TRUE;
             }
 
-            stateMachine(A_R, DISC, 0);
+            stateMachine(A_R, DISC, 0, 0);
         }
         if (alarmCount == getnTransmissions())
             return -1;
@@ -458,7 +529,7 @@ int llclose(int showStatistics)
     case LlRx:
         while (STOP == FALSE)
         {
-            stateMachine(A_T, DISC, 0);
+            stateMachine(A_T, DISC, 0, 0);
         }
         printf("Received DISC\n");
         bytes = sendBuffer(A_R, DISC);
@@ -468,7 +539,7 @@ int llclose(int showStatistics)
         state = START;
         while (STOP == FALSE)
         {
-            stateMachine(A_R, C_UA, 0);
+            stateMachine(A_R, C_UA, 0, 0);
         }
         printf("Received UA\n");
         break;

@@ -60,6 +60,8 @@ typedef struct
 #define REJ(n) 0x01 | (n << 7) // 0 ou 1
 #define C_INF(n) (n<<6) // 0 ou 1
 
+#define RR_R 0
+
 #define ESCAPE 0x7D
 
 #define START 0
@@ -69,6 +71,14 @@ typedef struct
 #define BCC_OK 4
 #define S_STOP 5
 #define WAITING_DATA 6
+
+// Responses
+#define RR0 0
+#define RR1 1
+#define REJ0 2
+#define REJ1 3
+#define OTHER 4
+
 
 // Returns role
 LinkLayerRole getRole();
@@ -80,7 +90,7 @@ int getnTransmissions();
 int getTimeOut();
 
 // State machine
-int stateMachine(unsigned char a, unsigned char c, int isData);
+int stateMachine(unsigned char a, unsigned char c, int isData, int RR_REJ);
 
 // Fills tram
 int sendBuffer(unsigned char a, unsigned char c);
@@ -95,7 +105,7 @@ int llwrite(const unsigned char *buf, int bufSize);
 
 // Receive data in packet.
 // Return number of chars read, or "-1" on error.
-int llread(unsigned char *packet);
+int llread(unsigned char * buffer);
 
 // Close previously opened connection.
 // if showStatistics == TRUE, link layer should print statistics in the console on close.
