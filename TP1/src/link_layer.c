@@ -302,6 +302,7 @@ int destuffing(const unsigned char *msg, int newSize, unsigned char *destuffedMs
     }
 
     printf("\nEND DESTUFIING\n");
+    printf("size: %d\n", size);
 
     return size;
 }
@@ -312,12 +313,12 @@ unsigned char calculateBCC2(const unsigned char *buf, int dataSize, int starting
     {
         printf("Error buf Size: %d\n", dataSize);
     }
-    unsigned char BCC2 = 0x00;
+    unsigned char BCC2 = buf[startingByte];
     for (unsigned int i = startingByte; i < dataSize; i++)
     {
         BCC2 ^= buf[i];
     }
-    printf("Calculate BCC2: %x", BCC2);
+    printf("Calculate BCC2: %x\n", BCC2);
     return BCC2;
 }
 
@@ -406,8 +407,15 @@ int llread(unsigned char *packett)
     int s = destuffing(stuffedMsg, bytesread, unstuffedMsg);
 
     unsigned char receivedBCC2 = unstuffedMsg[s - 1];
+    printf("RECEIVED BCC2: %x\n", receivedBCC2);
     unsigned char receivedDataBCC2 = calculateBCC2(unstuffedMsg, s - 1, 4);
+    printf("EXPECTED BCC2: %x\n", receivedDataBCC2);
 
+    if (receivedBCC2 == receivedDataBCC2 && unstuffedMsg[2] == C_INF(packet))
+    {
+        packet = (packet + 1) % 2;
+        printf("STATUS 1 ALL OK: %x , %x\n", receivedBCC2, unstuffedMsg[2]);
+    }
     return 0;
 }
 
