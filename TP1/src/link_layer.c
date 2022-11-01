@@ -19,6 +19,8 @@ int fd;
 
 int bytes;
 
+unsigned char readbyte;
+
 LinkLayer layer;
 
 LinkLayerRole getRole()
@@ -36,7 +38,7 @@ int getTimeOut()
     return layer.timeout;
 }
 
-unsigned char stateMachine(unsigned char a, unsigned char c, int isData)
+int stateMachine(unsigned char a, unsigned char c, int isData)
 {
 
     unsigned char byte = 0;
@@ -47,7 +49,6 @@ unsigned char stateMachine(unsigned char a, unsigned char c, int isData)
 
     if (bytes > 0)
     {
-        printf("%x\n", byte);
         switch (state)
         {
         case START:
@@ -75,13 +76,23 @@ unsigned char stateMachine(unsigned char a, unsigned char c, int isData)
             printf("C_RCV\n");
             if (byte == (a ^ c))
             {
-                if (isData) STOP = TRUE;
-                state = BCC_OK;
+                if (isData)
+                    state = WAITING_DATA;
+                else
+                    state = BCC_OK;
             }
             else if (byte == FLAG)
                 state = FLAG_RCV;
             else
                 state = START;
+            break;
+        case WAITING_DATA:
+            printf("WAITING_DATA\n");
+            if (byte == FLAG)
+            {
+                STOP = TRUE;
+                //alarm(0);
+            }
             break;
         case BCC_OK:
             printf("BCC_OK\n");
@@ -97,9 +108,12 @@ unsigned char stateMachine(unsigned char a, unsigned char c, int isData)
                 state = START;
             break;
         }
+        printf("%x\n", byte);
+        readbyte = byte;
+        return TRUE;
     }
 
-    return byte;
+    return FALSE;
 }
 
 int sendBuffer(unsigned char a, unsigned char c)
@@ -211,6 +225,7 @@ int llopen(LinkLayer connectionParameters)
 
             stateMachine(A_T, C_UA, 0);
         }
+        printf("LLOPEN OK\n");
         break;
     case LlRx:
         while (STOP == FALSE)
@@ -218,7 +233,7 @@ int llopen(LinkLayer connectionParameters)
             stateMachine(A_T, C_SET, 0);
         }
         bytes = sendBuffer(A_T, C_UA);
-        printf("%d bytes written\n", bytes);
+        printf("RESPONSE TO LLOPEN TRANSMITER. %d bytes written\n", bytes);
         break;
     default:
         break;
@@ -231,46 +246,62 @@ int llopen(LinkLayer connectionParameters)
 // LLWRITE
 ////////////////////////////////////////////////
 
-int stuffing(const unsigned char *msg, int newSize, unsigned int *stuffedMsg)
+int stuffing(const unsigned char *msg, int newSize, unsigned char *stuffedMsg)
 {
     int size = 0;
 
     stuffedMsg[size++] = msg[0];
+
+    printf("\nSTUFFING\n");
+
+    printf("%x\n", stuffedMsg[size - 1]);
 
     for (int i = 1; i < newSize; i++)
     {
         if (msg[i] == FLAG || msg[i] == ESCAPE)
         {
             stuffedMsg[size++] = ESCAPE;
+            printf("%x\n", stuffedMsg[size - 1]);
             stuffedMsg[size++] = msg[i] ^ 0x20;
+            printf("%x\n", stuffedMsg[size - 1]);
         }
         else
         {
             stuffedMsg[size++] = msg[i];
+            printf("%x\n", stuffedMsg[size - 1]);
         }
     }
+
+    printf("\nEND STUFFING\n");
 
     return size;
 }
 
-int destuffing(const unsigned char *msg, int newSize, unsigned int *destuffedMsg)
+int destuffing(const unsigned char *msg, int newSize, unsigned char *destuffedMsg)
 {
     int size = 0;
 
+    printf("\nDESTUFIING\n");
+
     destuffedMsg[size++] = msg[0];
+    printf("%x\n", destuffedMsg[size - 1]);
 
     for (int i = 1; i < newSize; i++)
     {
         if (msg[i] == ESCAPE)
         {
             destuffedMsg[size++] = msg[i + 1] ^ 0x20;
+            printf("%x\n", destuffedMsg[size - 1]);
             i++;
         }
         else
         {
             destuffedMsg[size++] = msg[i];
+            printf("%x\n", destuffedMsg[size - 1]);
         }
     }
+
+    printf("\nEND DESTUFIING\n");
 
     return size;
 }
@@ -293,7 +324,7 @@ unsigned char calculateBCC2(const unsigned char *buf, int dataSize, int starting
 int llwrite(const unsigned char *buf, int bufSize)
 {
     int newSize = bufSize + 5; // FLAG + A + C + BCC1 + .... + BCC2 + FLAG
-    int S = 0;
+    // int S = 0;
     unsigned char msg[newSize];
 
     static int packet = 0;
@@ -329,9 +360,9 @@ int llwrite(const unsigned char *buf, int bufSize)
     {
         if (alarmEnabled == FALSE)
         {
-            bytes = write(fd, stuffed, newSize);
-            printf("Data Enviada. %d bytes written\n", bytes);
             numtries++;
+            bytes = write(fd, stuffed, newSize);
+            printf("Data Enviada. %d bytes written, %dº try...\n", bytes, numtries);
             alarm(layer.timeout); // Set alarm to be triggered
             alarmEnabled = TRUE;
             state = START;
@@ -358,15 +389,24 @@ int llread(unsigned char *packett)
     STOP = FALSE;
     state = START;
 
-    unsigned char byte = 0;
-
     int bytes = 0;
 
-    while (STOP == FALSE && bytesread < MAX_BUFFER_SIZE)
+    while (STOP == FALSE)
     {
-        byte = stateMachine(A_T, C_INF(packet), 1);
-        stuffedMsg[bytesread++] = byte;
+        if (stateMachine(A_T, C_INF(packet), 1))
+        {
+            stuffedMsg[bytesread] = readbyte;
+            printf("STUFFED MSG %x\n", stuffedMsg[bytesread]);
+            bytesread++;
+        }
     }
+
+    printf("DATA RECEIVED\n");
+
+    int s = destuffing(stuffedMsg, bytesread, unstuffedMsg);
+
+    unsigned char receivedBCC2 = unstuffedMsg[s - 1];
+    unsigned char receivedDataBCC2 = calculateBCC2(unstuffedMsg, s - 1, 4);
 
     return 0;
 }

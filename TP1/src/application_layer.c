@@ -21,11 +21,11 @@ int transmitter(const char *filename)
 
     unsigned char example[5];
 
-    example[0] = 0x01;
-    example[1] = 0x02;
-    example[2] = 0x03;
-    example[3] = 0x04;
-    example[4] = 0x05;
+    example[0] = 0x7e;
+    example[1] = 0X01;
+    example[2] = 0X02;
+    example[3] = 0x03;
+    example[4] = ESCAPE;
     
     llwrite(example, 5);
 
@@ -34,7 +34,7 @@ int transmitter(const char *filename)
 
 int receiver(const char *filename)
 {
-    unsigned char buf[MAX_PAYLOAD_SIZE];
+    unsigned char buf[MAX_BUFFER_SIZE];
 
     llread(buf);
 
