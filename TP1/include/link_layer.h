@@ -32,7 +32,7 @@ typedef struct
 
 // SIZE of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer
-#define MAX_PACKET_SIZE 5
+#define MAX_PACKET_SIZE 256
 #define MAX_BUFFER_SIZE (MAX_PACKET_SIZE * 2 + 7)
 
 // MISC
@@ -58,7 +58,7 @@ typedef struct
 #define DISC 0x0B
 #define RR(n) 0x05 | (n << 7) // 0 ou 1
 #define REJ(n) 0x01 | (n << 7) // 0 ou 1
-#define C_INF(n) (n<<6) // 0 ou 1
+#define C_INF(n) 0x00 |(n<<6) // 0 ou 1
 
 #define RR_R 0
 
@@ -79,6 +79,13 @@ typedef struct
 #define REJ1 3
 #define OTHER 4
 
+//Packets
+#define MIDDLE_PACKET 1
+#define STARTING_PACKET 2
+#define ENDING_PACKET 3
+
+#define FILE_SIZE 0
+#define FILE_NAME 1
 
 // Returns role
 LinkLayerRole getRole();

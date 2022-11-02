@@ -42,7 +42,9 @@ int getTimeOut()
 
 int stateMachine(unsigned char a, unsigned char c, int isData, int RR_REJ)
 {
-
+    //printf("%x\n", c);
+    if (!RR_REJ)
+        response = -1;
     unsigned char byte = 0;
 
     int bytes = 0;
@@ -156,7 +158,7 @@ int stateMachine(unsigned char a, unsigned char c, int isData, int RR_REJ)
                 state = START;
             break;
         }
-        printf("%x\n", byte);
+        //printf("%x\n", byte);
         readbyte = byte;
         return TRUE;
     }
@@ -193,7 +195,8 @@ void alarmHandler(int signal)
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
-    layer = connectionParameters;
+    printf("HEY\n");
+        layer = connectionParameters;
 
     (void)signal(SIGALRM, alarmHandler);
 
@@ -264,6 +267,7 @@ int llopen(LinkLayer connectionParameters)
         {
             if (alarmEnabled == FALSE)
             {
+
                 bytes = sendBuffer(A_T, C_SET);
                 printf("%d bytes written\n", bytes);
                 alarm(connectionParameters.timeout); // Set alarm to be triggered
@@ -272,6 +276,13 @@ int llopen(LinkLayer connectionParameters)
             }
 
             stateMachine(A_T, C_UA, 0, 0);
+        }
+        alarm(0);
+
+        if (alarmCount >= layer.nRetransmissions)
+        {
+            printf("ERRO TIME OUT\n");
+            return -1;
         }
         printf("LLOPEN OK\n");
         break;
@@ -361,7 +372,7 @@ unsigned char calculateBCC2(const unsigned char *buf, int dataSize, int starting
     {
         printf("Error buf Size: %d\n", dataSize);
     }
-    unsigned char BCC2 = buf[startingByte];
+    unsigned char BCC2 = 0x00;
     for (unsigned int i = startingByte; i < dataSize; i++)
     {
         BCC2 ^= buf[i];
@@ -376,12 +387,12 @@ int llwrite(const unsigned char *buf, int bufSize)
     // int S = 0;
     unsigned char msg[newSize];
 
-    static int packet = 0;
+    // static int packet = 0;
 
     msg[0] = FLAG;
     msg[1] = A_T;
-    msg[2] = C_INF(packet);
-    msg[3] = BCC(A_T, C_INF(packet));
+    msg[2] = C_INF(FALSE);
+    msg[3] = BCC(A_T, C_INF(FALSE));
 
     unsigned char BCC2 = buf[0];
     for (int i = 0; i < bufSize; i++)
@@ -414,18 +425,20 @@ int llwrite(const unsigned char *buf, int bufSize)
             numtries++;
             bytes = write(fd, stuffed, newSize);
             printf("Data Enviada. %d bytes written, %dº try...\n", bytes, numtries);
-            packet = (packet + 1) % 2;
             alarm(layer.timeout); // Set alarm to be triggered
             alarmEnabled = TRUE;
             state = START;
         }
 
-        stateMachine(A_T, RR_R, 0, 1);
-
-        if ((packet == 0 && response == RR1) || (packet == 1 && response == RR0)){
+        stateMachine(A_T, 0, 0, 1);
+        /*
+        if ((packet == 0 && response == RR1) || (packet == 1 && response == RR0))
+        {
             rcvd = TRUE;
-        }
+        }*/
     }
+    // packet = (packet + 1) % 2;
+    alarm(0);
     printf("Data Accepted!\n");
 
     return 0;
@@ -438,7 +451,7 @@ int llread(unsigned char *buffer)
 {
     int bytesread = 0;
 
-    static int packet = 0;
+    // static int packet = 0;
 
     unsigned char stuffedMsg[MAX_BUFFER_SIZE];
     unsigned char unstuffedMsg[MAX_PACKET_SIZE + 7];
@@ -450,10 +463,9 @@ int llread(unsigned char *buffer)
 
     while (STOP == FALSE)
     {
-        if (stateMachine(A_T, C_INF(packet), 1, 0))
+        if (stateMachine(A_T, 0, 1, 0))
         {
             stuffedMsg[bytesread] = readbyte;
-            printf("STUFFED MSG %x\n", stuffedMsg[bytesread]);
             bytesread++;
         }
     }
@@ -462,31 +474,32 @@ int llread(unsigned char *buffer)
 
     int s = destuffing(stuffedMsg, bytesread, unstuffedMsg);
 
-    unsigned char receivedBCC2 = unstuffedMsg[s - 1];
+    unsigned char receivedBCC2 = unstuffedMsg[s - 2];
     printf("RECEIVED BCC2: %x\n", receivedBCC2);
-    unsigned char expectedBCC2 = calculateBCC2(unstuffedMsg, s - 1, 4);
+    unsigned char expectedBCC2 = calculateBCC2(unstuffedMsg, s - 2, 4);
     printf("EXPECTED BCC2: %x\n", expectedBCC2);
 
-    if (receivedBCC2 == expectedBCC2 && unstuffedMsg[2] == C_INF(packet))
+    if (receivedBCC2 == expectedBCC2 && unstuffedMsg[2] == C_INF(FALSE))
     {
-        packet = (packet + 1) % 2;
-        sendBuffer(A_T, RR(packet));
+        // packet = (packet + 1) % 2;
+        sendBuffer(A_T, RR(FALSE));
         memcpy(buffer, &unstuffedMsg[4], s - 5);
         printf("STATUS 1 ALL OK: %x , %x\nSENDING RESPONSE\n", receivedBCC2, unstuffedMsg[2]);
+        return s - 5;
     }
     else if (receivedBCC2 == expectedBCC2)
     {
-        sendBuffer(A_T, RR(packet));
+        sendBuffer(A_T, RR(FALSE));
         tcflush(fd, TCIFLUSH);
         printf("Duplicate packet!\n");
     }
     else
     {
-        sendBuffer(A_T, REJ(packet));
+        sendBuffer(A_T, REJ(FALSE));
         tcflush(fd, TCIFLUSH);
         printf("Error in BCC2, sent REJ\n");
     }
-    return 0;
+    return -1;
 }
 
 ////////////////////////////////////////////////
