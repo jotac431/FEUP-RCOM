@@ -2,9 +2,16 @@
 
 #include "application_layer.h"
 
+struct stat file_stat;
+
+clock_t start_t, end_t;
+double total_t;
+
+
 int transmitter(const char *filename)
 {
-    struct stat file_stat;
+    start_t = clock();
+
     if (stat(filename, &file_stat) < 0)
     {
         perror("Error getting file information.");
@@ -74,6 +81,14 @@ int transmitter(const char *filename)
     printf("Ending packet sent\n");
 
     fclose(fptr);
+
+    end_t = clock();
+    total_t = (double)(end_t - start_t) / CLOCKS_PER_SEC;
+
+    printf("\nTotal time taken: %f seconds\n", total_t);
+    printf("Size transfered: %d bytes\n", file_stat.st_size);
+    printf("Transfer Speed: %f B/s\n\n", file_stat.st_size/total_t);
+
 
     return 0;
 }
