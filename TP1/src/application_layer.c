@@ -114,7 +114,7 @@ int receiver(const char *filename)
             destination = fopen(filename, "wb");
             break;
 
-        case MIDDLE_PACKET:
+        case MIDDLE_PACKET: ;
             static unsigned int n = 0;
             if (buf[1] != n)
                 return -1;
